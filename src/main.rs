@@ -11,6 +11,9 @@ fn match_pattern(input_line: &str, pattern: &str) -> bool {
             r"\d" => {
                 return input_line.chars().any(|c| c.is_numeric());
             }
+            r"\w"=>{
+                return input_line.chars().any(|c| c.is_alphanumeric() || c=='_')
+            }
             _ => panic!("Unhandled pattern: {}", pattern)
         }
 
