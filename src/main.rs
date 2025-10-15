@@ -10,6 +10,7 @@ enum PatternAtom {
     NegativeGroup(String),
     Star(Box<PatternAtom>),
     Start(Vec<PatternAtom>),
+    End,
 }
 fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
     let mut i = 0;
@@ -54,7 +55,11 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
             current_pattern = Some(PatternAtom::Start(subpattern_vec));
             i = pattern.len();
 
-        } else {
+        } else if i == pattern.len() -1 && pattern.chars().nth(i) == Some('$'){
+            current_pattern = Some(PatternAtom::End);
+            i += 1;
+        }
+        else {
             let option_pattern_char = pattern.chars().nth(i);
             match option_pattern_char {
                 Some(pattern_char) => {
@@ -64,6 +69,9 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
                 None => panic!("Something happened and pattern doesn't have ith char"),
             }
         }
+
+
+
         match current_pattern {
             Some(sub_pattern) => pattern_atoms.push(sub_pattern),
             None => panic!("current_pattern should not be None"),
@@ -80,6 +88,12 @@ mod tests {
     #[test]
     fn test_start_anchor() {
         assert_eq!(split_pattern("^\\d"), vec![ PatternAtom::Start(vec![PatternAtom::Digit] )]);
+    }
+
+    #[test]
+    fn test_end_anchor() {
+        assert_eq!(split_pattern("^\\d$"), vec![ PatternAtom::Start(vec![PatternAtom::Digit, PatternAtom::End] )]);
+        assert_eq!(split_pattern("\\d$"), vec![ PatternAtom::Digit, PatternAtom::End]);
     }
 
     #[test]
@@ -164,6 +178,12 @@ mod tests {
         assert_eq!(find_pattern_atom_at_start("1", &PatternAtom::Start(vec![PatternAtom::Digit])), true);
     }
 
+    #[test]
+    fn test_recognizes_end_anchor() {
+        assert_eq!(find_pattern_atom_at_start("", &PatternAtom::End), true);
+        assert_eq!(find_pattern_atom_at_start("1", &PatternAtom::Start(vec![PatternAtom::Digit])), true);
+    }
+
 
     #[test]
     fn test_regression_chars(){
@@ -213,6 +233,13 @@ fn find_pattern_atom_at_start(input_line: &str, pattern_atom: &PatternAtom) -> b
         }
         PatternAtom::Start(subpattern)=>{
             return match_string_exactly(input_line, subpattern);
+        }
+        PatternAtom::End => {
+            if input_line.len()==0{
+                return true;
+            }else{
+                return false;
+            }
         }
         _ => panic!("Unhandled pattern atom")
     }
