@@ -59,7 +59,7 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
                 pattern_atoms[pattern_atoms.len() - 1].clone(),
             )));
             i += 1;
-        } else if pattern.chars().nth(i) == Some('*') {
+        } else if pattern.chars().nth(i) == Some('*') || pattern.chars().nth(i) == Some('?'){
             let option_last_pattern_atom = pattern_atoms.pop();
             match option_last_pattern_atom{
                 Some(last_pattern_atom)=> {
@@ -68,7 +68,6 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
                 }
                 None => panic!("There was no last pattern for star. Likely, you have star at start of your pattern, which is not allowed")
             }
-            i += 1;
         } else {
             let option_pattern_char = pattern.chars().nth(i);
             match option_pattern_char {
@@ -331,7 +330,17 @@ mod tests {
                     PatternAtom::Star( Box::new( PatternAtom::Char('a') ) )
                 ]
             );
+
+            assert_eq!(
+                split_pattern("ca?g"),
+                vec![
+                    PatternAtom::Char('c'),
+                    PatternAtom::Star(Box::new( PatternAtom::Char('a') ) ),
+                    PatternAtom::Char('g'),
+                ]
+            );
         }
+
     }
     #[cfg(test)]
     mod recognize_pattern_atom {
@@ -467,6 +476,7 @@ mod tests {
             assert_eq!(match_pattern("ff", "ffe+"), false);
             assert_eq!(match_pattern("caaats", "ca+at"), true);
             assert_eq!(match_pattern("caaats", "ca+bt"), false);
+            assert_eq!(match_pattern("cag", "ca?t"), false);
         }
     }
 }
