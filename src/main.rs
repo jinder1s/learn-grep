@@ -8,7 +8,6 @@ enum PatternAtom {
     Word,
     PositiveGroup(String),
     NegativeGroup(String),
-    Plus(Box<PatternAtom>),
     Star(Box<PatternAtom>),
     Start(Vec<PatternAtom>),
     End,
@@ -54,6 +53,21 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
             i = pattern.len();
         } else if i == pattern.len() - 1 && pattern.chars().nth(i) == Some('$') {
             current_pattern = Some(PatternAtom::End);
+            i += 1;
+        } else if pattern.chars().nth(i) == Some('+') {
+            current_pattern = Some(PatternAtom::Star(Box::new(
+                pattern_atoms[pattern_atoms.len() - 1].clone(),
+            )));
+            i += 1;
+        } else if pattern.chars().nth(i) == Some('*') {
+            let option_last_pattern_atom = pattern_atoms.pop();
+            match option_last_pattern_atom{
+                Some(last_pattern_atom)=> {
+                    current_pattern = Some(PatternAtom::Star(Box::new(last_pattern_atom)));
+                    i += 1;
+                }
+                None => panic!("There was no last pattern for star. Likely, you have star at start of your pattern, which is not allowed")
+            }
             i += 1;
         } else {
             let option_pattern_char = pattern.chars().nth(i);
@@ -123,14 +137,30 @@ fn find_pattern_atom_at_start(input_line: &str, pattern_atom: &PatternAtom) -> b
     }
 }
 
-fn match_string_exactly(input: &str, pattern: &Vec<PatternAtom>) -> bool{
+fn match_string_exactly(input: &str, pattern: &[PatternAtom]) -> bool {
     let mut i = 0;
-    for pattern_atom in pattern{
-        if find_pattern_atom_at_start(&input[i..], pattern_atom){
-            i+=1;
-        }
-        else{
-           return false
+    for (index, pattern_atom ) in pattern.iter().enumerate() {
+        match pattern_atom {
+            PatternAtom::Star(subpattern_atom) => {
+                loop{
+                    if match_string_exactly(&input[i..], &pattern[index+1..]){
+                        return true;
+                    }
+                    if !find_pattern_atom_at_start(&input[i..], subpattern_atom) {
+                        break;
+                    }else{
+                        i += 1;
+
+                    }
+                }
+            }
+            _ => {
+                if find_pattern_atom_at_start(&input[i..], pattern_atom) {
+                    i += 1;
+                } else {
+                    return false;
+                }
+            }
         }
     }
     true
@@ -265,6 +295,43 @@ mod tests {
                 ]
             );
         }
+        #[test]
+        fn test_plus() {
+            assert_eq!(
+                split_pattern("a+"),
+                vec![
+                    PatternAtom::Char('a'),
+                    PatternAtom::Star( Box::new( PatternAtom::Char('a') ) )
+                ]
+            );
+
+            assert_eq!(
+                split_pattern("ba+"),
+                vec![
+                    PatternAtom::Char('b'),
+                    PatternAtom::Char('a'),
+                    PatternAtom::Star( Box::new( PatternAtom::Char('a') ) )
+                ]
+            );
+        }
+
+        #[test]
+        fn test_star() {
+            assert_eq!(
+                split_pattern("a*"),
+                vec![
+                    PatternAtom::Star( Box::new( PatternAtom::Char('a') ) )
+                ]
+            );
+
+            assert_eq!(
+                split_pattern("ba*"),
+                vec![
+                    PatternAtom::Char('b'),
+                    PatternAtom::Star( Box::new( PatternAtom::Char('a') ) )
+                ]
+            );
+        }
     }
     #[cfg(test)]
     mod recognize_pattern_atom {
@@ -371,6 +438,15 @@ mod tests {
                 true
             );
         }
+
+        #[test]
+        fn test_recognizes_star() {
+            assert_eq!(match_string_exactly("", &vec![PatternAtom::Star(Box::new(PatternAtom::Digit)) ]), true);
+            assert_eq!(match_string_exactly("1", &vec![PatternAtom::Star(Box::new(PatternAtom::Digit)) ]), true);
+            assert_eq!(match_string_exactly("1234", &vec![PatternAtom::Star(Box::new(PatternAtom::Digit)) ]), true);
+            assert_eq!(match_string_exactly("abc", &vec![PatternAtom::Star(Box::new(PatternAtom::Digit)) ]), true);
+        }
+
     }
 
     #[cfg(test)]
@@ -383,6 +459,14 @@ mod tests {
             assert_eq!(match_pattern("e1", "\\d\\w"), false);
             assert_eq!(match_pattern("1e", "^\\d\\w"), true);
             assert_eq!(match_pattern("e1e", "^\\d\\w"), false);
+        }
+
+        #[test]
+        fn test_regression_star() {
+            assert_eq!(match_pattern("ffe", "ffe+"), true);
+            assert_eq!(match_pattern("ff", "ffe+"), false);
+            assert_eq!(match_pattern("caaats", "ca+at"), true);
+            assert_eq!(match_pattern("caaats", "ca+bt"), false);
         }
     }
 }
