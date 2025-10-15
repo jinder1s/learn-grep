@@ -137,6 +137,9 @@ fn find_pattern_atom_at_start(input_line: &str, pattern_atom: &PatternAtom) -> b
             }
         }
         PatternAtom::Wild => {
+            if input_line.len() == 0 {
+                return false;
+            }
             return true;
         }
         _ => panic!("Unhandled pattern atom"),
@@ -449,6 +452,18 @@ mod tests {
             assert_eq!(
                 find_pattern_atom_at_start("ffe", &PatternAtom::Char('f')),
                 true
+            );
+        }
+
+        #[test]
+        fn test_recognizes_wild_at_start() {
+            assert_eq!(
+                find_pattern_atom_at_start("ffe", &PatternAtom::Wild),
+                true 
+            );
+            assert_eq!(
+                find_pattern_atom_at_start("", &PatternAtom::Wild),
+               false
             );
         }
 
