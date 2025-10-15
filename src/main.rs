@@ -9,7 +9,7 @@ enum PatternAtom {
     PositiveGroup(String),
     NegativeGroup(String),
     Star(Box<PatternAtom>),
-    Start(Box<PatternAtom>),
+    Start(Vec<PatternAtom>),
 }
 fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
     let mut i = 0;
@@ -48,6 +48,12 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
             } else {
                 panic!("Invalid pattern, found '[' without a ']'")
             }
+        } else if pattern.chars().nth(i) == Some('^'){
+            // Start of string anchor
+            let subpattern_vec = split_pattern(&pattern[1..]);
+            current_pattern = Some(PatternAtom::Start(subpattern_vec));
+            i = pattern.len();
+
         } else {
             let option_pattern_char = pattern.chars().nth(i);
             match option_pattern_char {
@@ -70,6 +76,11 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
 mod tests {
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
+
+    #[test]
+    fn test_start_anchor() {
+        assert_eq!(split_pattern("^\\d"), vec![ PatternAtom::Start(vec![PatternAtom::Digit] )]);
+    }
 
     #[test]
     fn test_single_digit() {
@@ -147,10 +158,20 @@ mod tests {
     }
 
     #[test]
+    fn test_recognizes_start_anchor() {
+        assert_eq!(find_pattern_atom_at_start("ffe", &PatternAtom::Start(vec![PatternAtom::Digit])), false);
+        assert_eq!(find_pattern_atom_at_start("1", &PatternAtom::Digit), true);
+        assert_eq!(find_pattern_atom_at_start("1", &PatternAtom::Start(vec![PatternAtom::Digit])), true);
+    }
+
+
+    #[test]
     fn test_regression_chars(){
         assert_eq!(match_pattern("ffe", "ffe"), true);
         assert_eq!(match_pattern("1e", "\\d\\w"), true);
         assert_eq!(match_pattern("e1", "\\d\\w"), false);
+        assert_eq!(match_pattern("1e", "^\\d\\w"), true);
+        assert_eq!(match_pattern("e1e", "^\\d\\w"), false);
     }
 }
 
@@ -190,6 +211,9 @@ fn find_pattern_atom_at_start(input_line: &str, pattern_atom: &PatternAtom) -> b
             };
             return !is_part_of_negative_group;
         }
+        PatternAtom::Start(subpattern)=>{
+            return match_string_exactly(input_line, subpattern);
+        }
         _ => panic!("Unhandled pattern atom")
     }
 }
@@ -213,6 +237,9 @@ fn match_pattern(input_line: &str, pattern: &str)-> bool{
     for (position, _) in input_line.char_indices(){
         if match_string_exactly(&input_line[ position..input_line.len() ], &pattern_vec){
             return true;
+        }
+        if let PatternAtom::Start(_) = pattern_vec[0]{
+            return false;
         }
     }
     return false;
