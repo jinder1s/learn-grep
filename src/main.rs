@@ -12,6 +12,7 @@ enum PatternAtom {
     Star(Box<PatternAtom>),
     Start(Vec<PatternAtom>),
     End,
+    Alternation(Vec<Vec<PatternAtom>>),
 }
 fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
     let mut i = 0;
@@ -44,6 +45,14 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
                     ));
                     i += 1 + length_of_subpattern + 1;
                 }
+            } else {
+                panic!("Invalid pattern, found '[' without a ']'")
+            }
+        } else if pattern.chars().nth(i) == Some('(') {
+            let option_end_index = pattern[i + 1..].find(")");
+            if let Some(length_of_subpattern) = option_end_index {
+                current_pattern = Some(PatternAtom::Alternation(pattern[i + 1..i + 1 + length_of_subpattern].split('|').map(|p| split_pattern(p)).collect()));
+                i += 1 + length_of_subpattern + 1;
             } else {
                 panic!("Invalid pattern, found '[' without a ']'")
             }
@@ -166,6 +175,11 @@ fn match_string_exactly(input: &str, pattern: &[PatternAtom]) -> bool {
                 if i > input.len() {
                     return false;
                 }
+            }
+            PatternAtom::Alternation(vec_of_vec_pattern)=>{
+                return vec_of_vec_pattern.iter().any(|vp| match_string_exactly(&input[i..],
+                                                                      &[&vp[..], &pattern[i+1..]].concat()));
+
             }
             _ => {
                 if find_pattern_atom_at_start(&input[i..], pattern_atom) {
@@ -298,6 +312,18 @@ mod tests {
             assert_eq!(
                 split_pattern("[abc]"),
                 vec![PatternAtom::PositiveGroup("abc".to_string())]
+            );
+        }
+
+        #[test]
+        fn test_alternation() {
+            assert_eq!(
+                split_pattern("(abc|ekg\\d)"),
+                    vec![PatternAtom::Alternation(
+                        vec![
+                            vec![PatternAtom::Char('a'), PatternAtom::Char('b'), PatternAtom::Char('c')],
+                            vec![PatternAtom::Char('e'), PatternAtom::Char('k'), PatternAtom::Char('g'), PatternAtom::Digit]
+                ])]
             );
         }
 
@@ -457,14 +483,8 @@ mod tests {
 
         #[test]
         fn test_recognizes_wild_at_start() {
-            assert_eq!(
-                find_pattern_atom_at_start("ffe", &PatternAtom::Wild),
-                true 
-            );
-            assert_eq!(
-                find_pattern_atom_at_start("", &PatternAtom::Wild),
-               false
-            );
+            assert_eq!(find_pattern_atom_at_start("ffe", &PatternAtom::Wild), true);
+            assert_eq!(find_pattern_atom_at_start("", &PatternAtom::Wild), false);
         }
 
         #[test]
@@ -539,6 +559,15 @@ mod tests {
             assert_eq!(match_pattern("gol", "g.+l"), true);
             assert_eq!(match_pattern("gol", "g.+gl"), false);
             assert_eq!(match_pattern("gol", "golll"), false);
+        }
+
+
+        #[test]
+        fn test_regression_alternation() {
+            assert_eq!(match_pattern("abc", "(abc|bdf|hello)"), true);
+            assert_eq!(match_pattern("abt", "(abc|bdf|hello)"), false);
+            assert_eq!(match_pattern("ab1", "(ab|bdf|hello)\\d"), true);
+            assert_eq!(match_pattern("a1", "(ab*|bdf|hello)\\d"), true);
         }
     }
 }
