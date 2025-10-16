@@ -14,7 +14,7 @@ enum PatternAtom {
     End,
     Alternation(Vec<Vec<PatternAtom>>),
     BackreferenceGroup(Vec<PatternAtom>),
-    BackreferenceInt(u16),
+    BackreferenceInt(usize),
 }
 fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
     let mut i = 0;
@@ -33,13 +33,11 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
                     pattern[i + 1..].find(|c: char| !c.is_digit(10));
                 match option_len_of_backreference_int {
                     Some(int_length) => {
-                        eprintln!("digits: {:?}", &pattern[i + 1..i + 1 + int_length]);
-                        let the_int: u16 = pattern[i + 1..i + 1 + int_length].parse().unwrap();
+                        let the_int: usize = pattern[i + 1..i + 1 + int_length].parse().unwrap();
                         current_pattern = Some(PatternAtom::BackreferenceInt(the_int));
-                        i += int_length-1;
+                        i += int_length - 1;
                     }
                     None => {
-                        eprintln!("digits2: {:?}", &pattern[i + 1..]);
                         current_pattern = Some(PatternAtom::BackreferenceInt(
                             pattern[i + 1..].parse().unwrap(),
                         ));
@@ -108,12 +106,14 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
             i += 1;
         } else if pattern.chars().nth(i) == Some('*') || pattern.chars().nth(i) == Some('?') {
             let option_last_pattern_atom = pattern_atoms.pop();
-            match option_last_pattern_atom{
-                Some(last_pattern_atom)=> {
+            match option_last_pattern_atom {
+                Some(last_pattern_atom) => {
                     current_pattern = Some(PatternAtom::Star(Box::new(last_pattern_atom)));
                     i += 1;
                 }
-                None => panic!("There was no last pattern for star. Likely, you have star at start of your pattern, which is not allowed")
+                None => panic!(
+                    "There was no last pattern for star. Likely, you have star at start of your pattern, which is not allowed"
+                ),
             }
         } else if pattern.chars().nth(i) == Some('.') {
             current_pattern = Some(PatternAtom::Wild);
@@ -172,9 +172,6 @@ fn find_pattern_atom_at_start(input_line: &str, pattern_atom: &PatternAtom) -> b
             };
             return !is_part_of_negative_group;
         }
-        PatternAtom::Start(subpattern) => {
-            return match_string_exactly(input_line, subpattern).is_some();
-        }
         PatternAtom::End => {
             if input_line.len() == 0 {
                 return true;
@@ -192,15 +189,30 @@ fn find_pattern_atom_at_start(input_line: &str, pattern_atom: &PatternAtom) -> b
     }
 }
 
-fn match_string_exactly(input: &str, pattern: &[PatternAtom]) ->  Option<String>   {
+fn match_string_exactly(
+    input: &str,
+    pattern: &[PatternAtom],
+    backreference_groups: &[String],
+) -> Option<String> {
     let mut i = 0;
+    let mut local_backreference_group = vec![];
+    eprintln!("input: {:?}, pattern: {:?}",input, pattern);
+    local_backreference_group.extend_from_slice(backreference_groups);
     for (index, pattern_atom) in pattern.iter().enumerate() {
         match pattern_atom {
             PatternAtom::Star(subpattern_atom) => loop {
-                if pattern.len() > 1{
-                    if let Some(matched_string) = match_string_exactly(&input[i..], &pattern[index + 1..]) {
-                        eprintln!("msstar: {}, beep: {}", matched_string, input[0..i].to_string());
-                        return Some(input[0..i].to_string()+&matched_string);
+                if pattern.len() > 1 {
+                    if let Some(matched_string) = match_string_exactly(
+                        &input[i..],
+                        &pattern[index + 1..],
+                        &local_backreference_group,
+                    ) {
+                        eprintln!(
+                            "msstar: {}, beep: {}",
+                            matched_string,
+                            input[0..i].to_string()
+                        );
+                        return Some(input[0..i].to_string() + &matched_string);
                     }
                 }
                 if !find_pattern_atom_at_start(&input[i..], subpattern_atom) {
@@ -216,10 +228,62 @@ fn match_string_exactly(input: &str, pattern: &[PatternAtom]) ->  Option<String>
                     return None;
                 }
             },
+            PatternAtom::BackreferenceGroup(sub_pattern) => {
+                if let Some(matched_string) =
+                    match_string_exactly(&input[i..], sub_pattern, &local_backreference_group)
+                {
+                    i += matched_string.len();
+                    local_backreference_group.push(matched_string)
+                }
+            }
+            PatternAtom::BackreferenceInt(group_num) => {
+                if (*group_num - 1) < local_backreference_group.len() {
+                    eprintln!(
+                        "backreference groups: {:?}, beep: {}",
+                        local_backreference_group,
+                        group_num,
+                    );
+                    let leftover_pattern = if index < pattern.len() - 1 {
+                        &[
+                            &split_pattern(&local_backreference_group[group_num - 1]),
+                            &pattern[index + 1..],
+                        ]
+                        .concat()
+                    } else {
+                        &split_pattern(&local_backreference_group[group_num - 1])
+                    };
+                    eprintln!(
+                        "backreference groups: {:?}, beep: {}, {:?}",
+                        local_backreference_group,
+                        group_num,
+                        &pattern[index + 1..]
+                    );
+                    if let Some(matched_string) = match_string_exactly(
+                        &input[i..],
+                        leftover_pattern,
+                        &local_backreference_group,
+                    ) {
+                        eprintln!(
+                            "msstar: {}, beep: {}",
+                            matched_string,
+                            input[0..i].to_string()
+                        );
+                        return Some(input[0..i].to_string() + &matched_string);
+                    }else{
+                        return None;
+                    }
+                } else {
+                    return None;
+                }
+            }
             PatternAtom::Alternation(vec_of_vec_pattern) => {
-                return vec_of_vec_pattern.iter().find_map( |vp| {
-                    if let Some(matched_string) = match_string_exactly(&input[i..], &[&vp[..], &pattern[i + 1..]].concat()){
-                        return Some(input[0..i].to_string()+&matched_string);
+                return vec_of_vec_pattern.iter().find_map(|vp| {
+                    if let Some(matched_string) = match_string_exactly(
+                        &input[i..],
+                        &[&vp[..], &pattern[index + 1..]].concat(),
+                        &local_backreference_group,
+                    ) {
+                        return Some(input[0..i].to_string() + &matched_string);
                     }
                     return None;
                 });
@@ -242,15 +306,28 @@ fn match_string_exactly(input: &str, pattern: &[PatternAtom]) ->  Option<String>
 // }
 fn match_pattern(input_line: &str, pattern: &str) -> bool {
     let pattern_vec = split_pattern(pattern);
-    for (position, _) in input_line.char_indices() {
-        if let Some(_) = match_string_exactly(&input_line[position..input_line.len()], &pattern_vec) {
+    if pattern_vec.len() == 0
+        && let PatternAtom::Start(subpattern) = &pattern_vec[0]
+    {
+        if let Some(_) = match_string_exactly(&input_line, &subpattern, &vec![]) {
             return true;
         }
-        if let PatternAtom::Start(_) = pattern_vec[0] {
-            return false;
+        return false;
+    } else {
+        for (position, _) in input_line.char_indices() {
+            if let Some(_) = match_string_exactly(
+                &input_line[position..input_line.len()],
+                &pattern_vec,
+                &vec![],
+            ) {
+                return true;
+            }
+            if let PatternAtom::Start(_) = pattern_vec[0] {
+                return false;
+            }
         }
+        return false;
     }
-    return false;
 }
 
 // Usage: echo <input_text> | your_program.sh -E <pattern>
@@ -438,7 +515,6 @@ mod tests {
             );
         }
 
-
         #[test]
         fn test_positive_group_and_char() {
             assert_eq!(
@@ -624,27 +700,39 @@ mod tests {
         #[test]
         fn test_recognizes_star() {
             assert_eq!(
-               match_string_exactly("", &vec![PatternAtom::Star(Box::new(PatternAtom::Digit))]),
-               Some("".to_string())
-
+                match_string_exactly(
+                    "",
+                    &vec![PatternAtom::Star(Box::new(PatternAtom::Digit))],
+                    &vec![]
+                ),
+                Some("".to_string())
             );
             assert_eq!(
-                match_string_exactly("1", &vec![PatternAtom::Star(Box::new(PatternAtom::Digit))]),
+                match_string_exactly(
+                    "1",
+                    &vec![PatternAtom::Star(Box::new(PatternAtom::Digit))],
+                    &vec![]
+                ),
                 Some("1".to_string())
             );
             assert_eq!(
                 match_string_exactly(
                     "1234",
-                    &vec![PatternAtom::Star(Box::new(PatternAtom::Digit))]
+                    &vec![PatternAtom::Star(Box::new(PatternAtom::Digit))],
+                    &vec![]
                 ),
                 Some("1234".to_string())
             );
             assert_eq!(
                 match_string_exactly(
                     "abc",
-                    &vec![PatternAtom::Digit, PatternAtom::Star(Box::new(PatternAtom::Digit))]
+                    &vec![
+                        PatternAtom::Digit,
+                        PatternAtom::Star(Box::new(PatternAtom::Digit))
+                    ],
+                    &vec![]
                 ),
-               None
+                None
             );
         }
     }
@@ -680,6 +768,17 @@ mod tests {
             assert_eq!(match_pattern("abt", "(abc|bdf|hello)"), false);
             assert_eq!(match_pattern("ab1", "(ab|bdf|hello)\\d"), true);
             assert_eq!(match_pattern("a1", "(ab*|bdf|hello)\\d"), true);
+        }
+
+        #[test]
+        fn test_regression_backreference() {
+            // assert_eq!(match_pattern("cat and cat", "(cat) and \\1"), true);
+            // assert_eq!(match_pattern("cat and dog", "(cat) and \\1"), false);
+            // assert_eq!(match_pattern("cat and cat and cat", "(cat) and \\1 and \\1"), true);
+            // assert_eq!(match_pattern("cat and cat and cat", "(cat) (and) \\1 \\2 \\1"), true);
+            // assert_eq!(match_pattern("1 and 1 and 1", "(\\d) (and) \\1 \\2 \\1"), true);
+            // assert_eq!(match_pattern("1 and 1 and 1", "(\\w) (and) \\1 \\2 \\1"), true);
+            assert_eq!(match_pattern("12 and 12 and 12", "(\\w+) (and) \\1 \\2 \\1"), true);
         }
     }
 }
