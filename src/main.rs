@@ -90,7 +90,7 @@ fn split_pattern(pattern: &str) -> Vec<PatternAtom> {
                 }
                 i += 1 + length_of_subpattern + 1;
             } else {
-                panic!("Invalid pattern, found '[' without a ']'")
+                panic!("Invalid pattern, found '(' without a ')'")
             }
         } else if pattern.chars().nth(i) == Some('^') {
             // Start of string anchor
